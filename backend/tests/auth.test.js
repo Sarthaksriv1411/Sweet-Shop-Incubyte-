@@ -5,12 +5,10 @@ const User = require('../src/models/User');
 
 describe('Auth API Tests', () => {
   beforeAll(async () => {
-    // Connect to test database
     await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/sweetshop_test');
   });
 
   afterAll(async () => {
-    // Clean up and disconnect
     await User.deleteMany({});
     await mongoose.connection.close();
   });
