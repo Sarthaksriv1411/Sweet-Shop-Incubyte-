@@ -525,10 +525,6 @@ docker-compose down -v
 docker-compose build --no-cache
 ```
 
-## 📝 License
-
-This project is licensed under the MIT License.
-
 ## 🤝 Contributing
 
 1. Fork the repository
@@ -539,7 +535,7 @@ This project is licensed under the MIT License.
 
 ## 📧 Support
 
-For support, email your-email@example.com or create an issue in the repository.
+For support, Sarthakshrivastava1411@gmail.com or create an issue in the repository.
 
 ---
 
