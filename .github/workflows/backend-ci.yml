@@ -1,0 +1,156 @@
+name: Backend CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    name: Run Backend Tests
+    runs-on: ubuntu-latest
+
+    services:
+      mongodb:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Create .env file
+        working-directory: ./backend
+        run: |
+          echo "PORT=5000" >> .env
+          echo "MONGODB_URI=mongodb://localhost:27017/sweetshop_test" >> .env
+          echo "JWT_SECRET=test_jwt_secret" >> .env
+          echo "JWT_EXPIRE=7d" >> .env
+          echo "NODE_ENV=test" >> .env
+
+      - name: Run backend tests
+        working-directory: ./backend
+        run: npm test
+        env:
+          MONGODB_URI: mongodb://localhost:27017/sweetshop_test
+          JWT_SECRET: test_jwt_secret
+          NODE_ENV: test
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./backend/coverage/lcov.info
+          flags: backend
+          name: backend-coverage
+
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.x
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Check for linting issues
+        working-directory: ./backend
+        run: echo "Linting step - add eslint if needed"
+
+  build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: [test]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: false
+          tags: sweetshop-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build frontend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: false
+          tags: sweetshop-frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [test]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create .env files
+        run: |
+          echo "PORT=5000" >> backend/.env
+          echo "MONGODB_URI=mongodb://mongodb:27017/sweetshop" >> backend/.env
+          echo "JWT_SECRET=test_jwt_secret" >> backend/.env
+          echo "JWT_EXPIRE=7d" >> backend/.env
+          echo "NODE_ENV=test" >> backend/.env
+
+      - name: Start services with Docker Compose
+        run: docker-compose -f docker-compose.dev.yml up -d mongodb backend
+
+      - name: Wait for services to be ready
+        run: |
+          sleep 10
+          curl --retry 10 --retry-delay 5 --retry-connrefused http://localhost:5000 || true
+
+      - name: Run integration tests
+        run: |
+          cd backend
+          npm ci
+          npm test
+
+      - name: Stop services
+        if: always()
+        run: docker-compose -f docker-compose.dev.yml down
