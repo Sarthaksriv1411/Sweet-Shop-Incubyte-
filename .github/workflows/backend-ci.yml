@@ -37,7 +37,7 @@ jobs:
 
       - name: Install backend dependencies
         working-directory: ./backend
-        run: npm ci
+        run: npm install
 
       - name: Create .env file
         working-directory: ./backend
@@ -115,38 +115,3 @@ jobs:
           tags: sweetshop-frontend:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  integration-test:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    needs: [test]
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Create .env files
-        run: |
-          echo "PORT=5000" >> backend/.env
-          echo "MONGODB_URI=mongodb://mongodb:27017/sweetshop" >> backend/.env
-          echo "JWT_SECRET=test_jwt_secret" >> backend/.env
-          echo "JWT_EXPIRE=7d" >> backend/.env
-          echo "NODE_ENV=test" >> backend/.env
-
-      - name: Start services with Docker Compose
-        run: docker-compose -f docker-compose.dev.yml up -d mongodb backend
-
-      - name: Wait for services to be ready
-        run: |
-          sleep 10
-          curl --retry 10 --retry-delay 5 --retry-connrefused http://localhost:5000 || true
-
-      - name: Run integration tests
-        run: |
-          cd backend
-          npm install
-          npm test
-
-      - name: Stop services
-        if: always()
-        run: docker-compose -f docker-compose.dev.yml down
